@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>La cuenta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Firebase (compat). Si falla la carga, sube el número de versión (ej: 11.0.2) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --paper:#FAF5EC; --card:#FFFCF6; --panel:#F3EADA; --ink:#211C14;
+    --inkSoft:#897E6C; --line:#E4DAC7; --accent:#E0533A; --green:#2E9E6B;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--paper)}
+  .mono{font-family:'Space Mono',ui-monospace,monospace}
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px 120px}
+  .head{padding:22px 0 14px}
+  .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);font-weight:600}
+  .h1{font-family:'Bricolage Grotesque';font-weight:800;font-size:30px;line-height:.98;letter-spacing:-.02em;margin:4px 0 0}
+  .tabs{display:flex;gap:6px;background:var(--panel);padding:4px;border-radius:13px;margin:6px 0 16px}
+  .tab{flex:1;border:0;background:transparent;padding:9px;border-radius:10px;font-weight:600;font-size:14px;color:var(--inkSoft);cursor:pointer;font-family:inherit;transition:.15s}
+  .tab.on{background:var(--ink);color:var(--paper)}
+  .hint{font-size:13px;color:var(--inkSoft);padding:2px 2px 12px;display:flex;align-items:center;gap:7px}
+  .dot{border-radius:50%;display:grid;place-items:center;font-size:9.5px;font-weight:700;color:#fff;font-family:'Space Mono';width:22px;height:22px}
+  .item{display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--card);border:1.5px solid var(--line);border-radius:13px;margin-bottom:7px;cursor:pointer;transition:border-color .14s,transform .08s;user-select:none}
+  .item:active{transform:scale(.992)}
+  .item.mine{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 8%,var(--card))}
+  .item-name{flex:1;font-size:15px;font-weight:500;line-height:1.2}
+  .item-price{font-family:'Space Mono';font-size:14px;font-weight:700}
+  .avatars{display:flex}
+  .avatars .dot{margin-left:-7px;border:2px solid var(--card)}
+  .avatars .dot:first-child{margin-left:0}
+  .share-empty{width:18px;height:18px;border-radius:50%;border:1.5px dashed var(--line)}
+  .footer{position:fixed;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-top:1.5px solid var(--line)}
+  .footer-in{max-width:560px;margin:0 auto;padding:13px 16px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .prog{height:6px;border-radius:4px;background:var(--panel);overflow:hidden;flex:1}
+  .prog>div{height:100%;background:var(--green);transition:width .3s}
+  .fmeta{font-size:12.5px;color:var(--inkSoft);white-space:nowrap;font-weight:500}
+  .fmeta b{color:var(--ink);font-family:'Space Mono'}
+  .totalcard{background:var(--ink);color:var(--paper);border-radius:16px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:flex-end;justify-content:space-between}
+  .totalcard .lbl{font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.65;font-weight:600}
+  .totalcard .big{font-family:'Space Mono';font-weight:700;font-size:26px;line-height:1;margin-top:6px}
+  .totalcard .side{text-align:right;font-size:12px;opacity:.7;line-height:1.5}
+  .receipt{position:relative;background:var(--card);border-radius:14px 14px 0 0;padding:16px 18px 8px;box-shadow:0 1px 0 var(--line)}
+  .tear{height:10px;background:linear-gradient(-45deg,transparent 66%,var(--card) 0) 0 100%/11px 11px repeat-x;margin-bottom:18px}
+  .r-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .r-name{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;flex:1}
+  .r-line{display:flex;justify-content:space-between;font-family:'Space Mono';font-size:13px;padding:3px 0}
+  .r-line .q{color:var(--inkSoft)}
+  .r-div{border-top:1.5px dashed var(--line);margin:9px 0}
+  .r-sub{display:flex;justify-content:space-between;font-family:'Space Mono';font-size:13px;color:var(--inkSoft);padding:2px 0}
+  .r-total{display:flex;justify-content:space-between;align-items:baseline;font-family:'Space Mono';font-weight:700;font-size:18px;margin-top:4px}
+  .copy{width:100%;margin-top:12px;border:1.5px solid var(--line);background:var(--paper);border-radius:10px;padding:9px;font-family:inherit;font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;transition:.14s}
+  .copy.done{background:var(--green);border-color:var(--green);color:#fff}
+  .empty{font-size:12px;color:var(--inkSoft);font-style:italic;padding:4px 0 2px}
+  .recon{background:var(--panel);border-radius:12px;padding:13px 16px;font-family:'Space Mono';font-size:12.5px;margin-top:16px}
+  .recon .l{display:flex;justify-content:space-between;padding:2px 0;color:var(--inkSoft)}
+  .recon .l.k{color:var(--ink);font-weight:700;border-top:1.5px dashed var(--line);margin-top:5px;padding-top:7px}
+  .btn{border:0;background:var(--ink);color:var(--paper);border-radius:11px;padding:13px 16px;font-weight:600;font-family:inherit;font-size:15px;cursor:pointer;width:100%}
+  .btn.alt{background:var(--card);color:var(--ink);border:1.5px solid var(--line)}
+  .btn:disabled{opacity:.5}
+  .field{width:100%;border:1.5px solid var(--line);border-radius:11px;padding:13px 14px;font-family:inherit;font-size:15px;background:var(--card);margin-bottom:10px}
+  .field:focus{outline:none;border-color:var(--accent)}
+  .linkbtn{background:none;border:0;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:0 0 12px}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:9px 14px 9px 9px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);cursor:pointer;font-family:inherit;font-size:15px;font-weight:500;color:var(--ink);margin:0 8px 8px 0}
+  .topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .topbar .me{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--inkSoft);font-weight:500;flex:1}
+  .ghost{border:1.5px solid var(--line);background:var(--card);border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+  .center{min-height:80vh;display:flex;flex-direction:column;justify-content:center}
+  .lead{font-size:14px;color:var(--inkSoft);margin:0 0 18px;line-height:1.5}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+// ====== CONFIGURACIÓN — pega tu config de Firebase ======
+// Firebase Console → ⚙ Project settings → Your apps → Web app → SDK config
+const firebaseConfig = {
+  apiKey: "AIzaSyCEuI0Y8k_f8jIOXsLCVxaoulRutOL4D5M",
+  authDomain: "cobro-almuerzos.firebaseapp.com",
+  projectId: "cobro-almuerzos",
+  storageBucket: "cobro-almuerzos.firebasestorage.app",
+  messagingSenderId: "217453502164",
+  appId: "1:217453502164:web:64f984390df6b54c61e541"
+};
+// ========================================================
+
+firebase.initializeApp(firebaseConfig);
+const dbf = firebase.firestore();
+const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+const billRef = (id) => dbf.collection("bills").doc(id);
+
+const PCOLORS = ["#E0533A","#2E9E6B","#3B7DD8","#C98A1E","#8B5CF6","#D6457E","#14A89B","#7A8B2E","#B5562E"];
+const fmt = (n) => "$" + Math.round(n).toLocaleString("es-CL");
+const initials = (name) => name.trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const param = (k) => new URLSearchParams(location.search).get(k);
+
+// Boleta de ejemplo (tu almuerzo del 11 jun) para el botón de la pantalla "crear"
+const EJEMPLO_ITEMS = `Schop Delirium 7000
+Schop Kuntsmann Torob 5500
+Papas Fritas 400 g 5900
+Schop Royal 500cc 4600
+Schop Royal 500cc 4600
+Schop Tamango Corta C 6800
+Papas Fritas 400 g 5900
+Extra Mayonesa 600
+Schop Royal 500cc 4600
+Frankie S 9900
+Schop Kuntsmann Torob 5500
+Frankie S 9900
+Texas S 10200
+Fungi Provolone S 13900
+Jalapeño Jack S 14200
+Extra Hamburguesa 2500
+Schop Royal 500cc 4600
+The American S 10600
+Tártaro Salmón palta 12500
+Fanta Zero 2900
+Crudo 9900
+Schop Royal 500cc 4600
+Schop Kuntsmann Torob 5500
+Schop Royal 500cc 4600
+Espresso Martini 5900
+Coors 3500
+Espresso Martini 5900
+Schop Tamango Corta C 6800
+Café Cortado Simple 2600
+Carajillo 7900`;
+const EJEMPLO_PEOPLE = "Tomás E, Kiko, Benja, Francisco K, Berni, Martín, Igor, Contesse, Joaco";
+
+function Dot({ p, size=22 }) {
+  return <span className="dot" style={{ background:p.color, width:size, height:size, fontSize:size*0.43 }}>{initials(p.name)}</span>;
+}
+
+// ---------- Crear cuenta nueva ----------
+function CreateBill() {
+  const [name, setName] = useState("");
+  const [itemsText, setItemsText] = useState("");
+  const [peopleText, setPeopleText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
+    const m = l.match(/^(.*?)[\s\$]+([\d.,]+)\s*$/);
+    if(!m) return null;
+    return { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1 };
+  }).filter(Boolean);
+
+  const create = async () => {
+    const its = parseItems(itemsText);
+    if(!its.length){ alert("Pega al menos un ítem (formato: Nombre  precio)"); return; }
+    setBusy(true);
+    try{
+      const bRef = await dbf.collection("bills").add({ name:name||"Cuenta", tipPct:0.10, createdAt:ts() });
+      const batch = dbf.batch();
+      its.forEach(it=>{ batch.set(bRef.collection("items").doc(), it); });
+      const names = peopleText.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+      names.forEach((n,i)=>{ batch.set(bRef.collection("participants").doc(), { name:n, color:PCOLORS[i%PCOLORS.length], pos:i }); });
+      await batch.commit();
+      location.search = "?bill=" + bRef.id;
+    }catch(e){ alert("Error: "+e.message); setBusy(false); }
+  };
+
+  return (
+    <div className="wrap center">
+      <div className="eyebrow">Nueva cuenta</div>
+      <h1 className="h1" style={{marginBottom:14}}>Arma una cuenta</h1>
+      <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. Los nombres son opcionales: la gente se suma desde el link.</p>
+      <button className="linkbtn" onClick={()=>{ setName("Almuerzo 11 jun"); setItemsText(EJEMPLO_ITEMS); setPeopleText(EJEMPLO_PEOPLE); }}>↳ Cargar boleta de ejemplo</button>
+      <input className="field" placeholder="Nombre (ej: Almuerzo viernes)" value={name} onChange={e=>setName(e.target.value)} />
+      <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\nPapas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
+      <input className="field" placeholder="Participantes separados por coma (opcional)" value={peopleText} onChange={e=>setPeopleText(e.target.value)} />
+      <button className="btn" disabled={busy} onClick={create}>{busy?"Creando…":"Crear y generar link"}</button>
+    </div>
+  );
+}
+
+// ---------- ¿Quién eres? ----------
+function Identify({ people, billId, billName, onPick }) {
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const add = async () => {
+    const n = name.trim(); if(!n) return;
+    const ref = await billRef(billId).collection("participants").add({ name:n, color:PCOLORS[people.length%PCOLORS.length], pos:Date.now() });
+    onPick(ref.id);
+  };
+  return (
+    <div className="wrap center">
+      <div className="eyebrow">{billName}</div>
+      <h1 className="h1" style={{marginBottom:18}}>¿Cuál eres tú?</h1>
+      <div>
+        {people.map(p=>(
+          <span key={p.id} className="chip" onClick={()=>onPick(p.id)}><Dot p={p} /> {p.name}</span>
+        ))}
+      </div>
+      {!adding
+        ? <button className="btn alt" style={{marginTop:10}} onClick={()=>setAdding(true)}>No estoy en la lista</button>
+        : <div style={{marginTop:10}}>
+            <input className="field" placeholder="Tu nombre" value={name} autoFocus onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} />
+            <button className="btn" onClick={add}>Sumarme</button>
+          </div>}
+    </div>
+  );
+}
+
+// ---------- Cuenta ----------
+function Bill({ token }) {
+  const [bill, setBill] = useState(null);
+  const [items, setItems] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [claims, setClaims] = useState([]); // {itemId, participantId}
+  const [meId, setMeId] = useState(localStorage.getItem("cuenta_me_"+token) || null);
+  const [tab, setTab] = useState("repartir");
+  const [copied, setCopied] = useState(null);
+  const [shared, setShared] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(()=>{
+    let unsubs = [];
+    (async()=>{
+      const ref = billRef(token);
+      const snap = await ref.get();
+      if(!snap.exists){ setBill(false); setReady(true); return; }
+      setBill({ id:snap.id, ...snap.data() });
+      const itSnap = await ref.collection("items").orderBy("position").get();
+      setItems(itSnap.docs.map(d=>({ id:d.id, ...d.data() })));
+      unsubs.push(ref.collection("participants").orderBy("pos").onSnapshot(s=>{
+        setPeople(s.docs.map(d=>({ id:d.id, ...d.data() })));
+      }));
+      unsubs.push(ref.collection("claims").onSnapshot(s=>{
+        setClaims(s.docs.map(d=>({ id:d.id, ...d.data() })));
+      }));
+      setReady(true);
+    })();
+    return ()=>unsubs.forEach(u=>u());
+  }, [token]);
+
+  const peopleById = useMemo(()=>Object.fromEntries(people.map(p=>[p.id,p])),[people]);
+  const me = meId ? peopleById[meId] : null;
+  const ownersOf = (itemId) => claims.filter(c=>c.itemId===itemId).map(c=>c.participantId);
+
+  useEffect(()=>{ if(ready && meId && people.length && !peopleById[meId]){ localStorage.removeItem("cuenta_me_"+token); setMeId(null);} },[ready,people]);
+  const pickMe = (id) => { localStorage.setItem("cuenta_me_"+token, id); setMeId(id); };
+
+  const toggle = async (itemId) => {
+    if(!me) return;
+    const ref = billRef(bill.id).collection("claims").doc(itemId+"_"+me.id);
+    if(ownersOf(itemId).includes(me.id)) await ref.delete();
+    else await ref.set({ itemId, participantId:me.id, createdAt:ts() });
+  };
+
+  const totals = useMemo(()=>{
+    const per = {}; people.forEach(p=>per[p.id]={items:[],sub:0});
+    let unassigned = 0;
+    items.forEach(it=>{
+      const owners = ownersOf(it.id);
+      if(!owners.length){ unassigned += Number(it.price); return; }
+      const share = Number(it.price)/owners.length;
+      owners.forEach(oid=>{ if(per[oid]){ per[oid].items.push({name:it.name,share,split:owners.length}); per[oid].sub+=share; }});
+    });
+    return { per, unassigned };
+  },[items,claims,people]);
+
+  const billSub = items.reduce((s,i)=>s+Number(i.price),0);
+  const tip = bill ? Number(bill.tipPct ?? 0.10) : 0.10;
+  const assignedCount = items.filter(i=>ownersOf(i.id).length).length;
+  const progress = items.length ? Math.round(assignedCount/items.length*100) : 0;
+
+  const shareLink = () => {
+    const url = location.origin + location.pathname + "?bill=" + token;
+    try{ navigator.clipboard.writeText(url); }catch(e){}
+    setShared(true); setTimeout(()=>setShared(false),1600);
+  };
+  const copyCharge = (p) => {
+    const tot = totals.per[p.id].sub*(1+tip);
+    try{ navigator.clipboard.writeText(`${p.name}, te tocó ${fmt(tot)} de la cuenta (incluye ${Math.round(tip*100)}% de propina). Te paso los datos para la transferencia 🙌`); }catch(e){}
+    setCopied(p.id); setTimeout(()=>setCopied(null),1600);
+  };
+
+  if(!ready) return <div className="wrap center"><p className="lead">Cargando…</p></div>;
+  if(bill===false) return <div className="wrap center"><h1 className="h1">Link no encontrado</h1><p className="lead">Revisa que el link esté completo.</p></div>;
+  if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} onPick={pickMe} />;
+
+  return (
+    <div>
+      <div className="wrap">
+        <div className="head">
+          <div className="eyebrow">{bill.name} · mesa de {people.length}</div>
+          <h1 className="h1">La cuenta</h1>
+        </div>
+
+        <div className="topbar">
+          <span className="me"><Dot p={me} size={20}/> Eres {me.name}</span>
+          <button className="ghost" onClick={shareLink}>{shared?"Link copiado ✓":"Compartir link"}</button>
+        </div>
+
+        <div className="tabs">
+          <button className={"tab"+(tab==="repartir"?" on":"")} onClick={()=>setTab("repartir")}>Lo mío</button>
+          <button className={"tab"+(tab==="resumen"?" on":"")} onClick={()=>setTab("resumen")}>Resumen</button>
+        </div>
+
+        {tab==="repartir" && <>
+          <div className="hint">Toca lo que consumiste. Lo que marquen los demás aparece en vivo.</div>
+          {items.map(it=>{
+            const owners = ownersOf(it.id);
+            const mine = owners.includes(me.id);
+            return (
+              <div key={it.id} className={"item"+(mine?" mine":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>toggle(it.id)}>
+                <span className="item-name">{it.name}</span>
+                {owners.length>0
+                  ? <div className="avatars">{owners.map(oid=>peopleById[oid] && <Dot key={oid} p={peopleById[oid]} size={22}/>)}</div>
+                  : <span className="share-empty" />}
+                <span className="item-price">{fmt(it.price)}</span>
+              </div>
+            );
+          })}
+        </>}
+
+        {tab==="resumen" && <>
+          <div className="totalcard">
+            <div><div className="lbl">Total a cobrar</div><div className="big">{fmt(billSub*(1+tip))}</div></div>
+            <div className="side">Subtotal {fmt(billSub)}<br/>+ propina {Math.round(tip*100)}% {fmt(billSub*tip)}</div>
+          </div>
+          {people.map(p=>{
+            const d = totals.per[p.id]; const sub=d.sub; const tot=sub*(1+tip);
+            return (
+              <div key={p.id}>
+                <div className="receipt">
+                  <div className="r-head"><Dot p={p} size={26}/><span className="r-name">{p.name}</span></div>
+                  {d.items.length===0 ? <div className="empty">Sin consumos marcados todavía</div>
+                    : d.items.map((li,idx)=>(
+                      <div className="r-line" key={idx}><span>{li.name}{li.split>1?<span className="q"> ÷{li.split}</span>:null}</span><span>{fmt(li.share)}</span></div>
+                    ))}
+                  <div className="r-div" />
+                  <div className="r-sub"><span>Subtotal</span><span>{fmt(sub)}</span></div>
+                  <div className="r-sub"><span>Propina {Math.round(tip*100)}%</span><span>{fmt(sub*tip)}</span></div>
+                  <div className="r-total"><span>TOTAL</span><span>{fmt(tot)}</span></div>
+                  {sub>0 && <button className={"copy"+(copied===p.id?" done":"")} onClick={()=>copyCharge(p)}>{copied===p.id?"Copiado ✓":"Copiar cobro"}</button>}
+                </div>
+                <div className="tear" />
+              </div>
+            );
+          })}
+          <div className="recon">
+            <div className="l"><span>Repartido</span><span>{fmt(billSub-totals.unassigned)}</span></div>
+            <div className="l"><span>Sin marcar</span><span>{fmt(totals.unassigned)}</span></div>
+            <div className="l k"><span>Boleta</span><span>{fmt(billSub)}</span></div>
+          </div>
+        </>}
+      </div>
+
+      {tab==="repartir" && (
+        <div className="footer"><div className="footer-in">
+          <div className="prog"><div style={{width:progress+"%"}} /></div>
+          <span className="fmeta">{totals.unassigned>0 ? <>Faltan <b>{fmt(totals.unassigned)}</b></> : <b style={{color:"var(--green)"}}>¡Todo marcado!</b>}</span>
+        </div></div>
+      )}
+    </div>
+  );
+}
+
+function App(){
+  const token = param("bill");
+  return token ? <Bill token={token} /> : <CreateBill />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
