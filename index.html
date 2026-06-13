@@ -87,6 +87,30 @@
   .prog{height:7px;border-radius:99px;background:var(--panel);overflow:hidden}
   .prog>div{height:100%;background:var(--green);transition:width .3s}
   .fmeta{font-size:13px;color:var(--inkSoft);text-align:center}
+  /* lista de almuerzos recientes */
+  .recents{margin-top:26px;border-top:1.5px dashed var(--line);padding-top:18px}
+  .recent{display:flex;align-items:center;gap:8px;background:var(--card);
+    border:1.5px solid var(--line);border-radius:13px;margin-bottom:8px;overflow:hidden}
+  .recent-main{flex:1;display:flex;align-items:center;justify-content:space-between;
+    gap:10px;padding:12px 14px;text-decoration:none;color:var(--ink)}
+  .recent-name{font-weight:600;font-size:15px}
+  .recent-date{font-family:'Space Mono',monospace;font-size:12px;color:var(--inkSoft)}
+  .recent-x{border:none;background:none;color:var(--inkSoft);font-size:22px;line-height:1;
+    padding:0 14px;cursor:pointer;align-self:stretch}
+  /* selector ¿quién consumió? */
+  .itemwrap{margin-bottom:8px}
+  .item.open{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
+  .caret{color:var(--inkSoft);font-size:12px}
+  .picker{background:var(--panel);border:1.5px solid var(--line);border-top:none;
+    border-radius:0 0 13px 13px;padding:12px 14px}
+  .picker-h{font-size:13px;color:var(--inkSoft);margin-bottom:10px}
+  .split-note{color:var(--green);font-weight:600}
+  .picker-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .pchip{display:inline-flex;align-items:center;gap:7px;background:var(--card);
+    border:1.5px solid var(--line);border-radius:999px;padding:6px 12px 6px 6px;
+    font-weight:600;font-size:14px;cursor:pointer}
+  .pchip.on{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc)}
+  .pchip:active{transform:scale(.97)}
 </style>
 </head>
 <body>
@@ -115,38 +139,17 @@ const fmt = (n) => "$" + Math.round(n).toLocaleString("es-CL");
 const initials = (name) => name.trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const param = (k) => new URLSearchParams(location.search).get(k);
 
-// Boleta de ejemplo (tu almuerzo del 11 jun) para el botón de la pantalla "crear"
-const EJEMPLO_ITEMS = `Schop Delirium 7000
-Schop Kuntsmann Torob 5500
-Papas Fritas 400 g 5900
-Schop Royal 500cc 4600
-Schop Royal 500cc 4600
-Schop Tamango Corta C 6800
-Papas Fritas 400 g 5900
-Extra Mayonesa 600
-Schop Royal 500cc 4600
-Frankie S 9900
-Schop Kuntsmann Torob 5500
-Frankie S 9900
-Texas S 10200
-Fungi Provolone S 13900
-Jalapeño Jack S 14200
-Extra Hamburguesa 2500
-Schop Royal 500cc 4600
-The American S 10600
-Tártaro Salmón palta 12500
-Fanta Zero 2900
-Crudo 9900
-Schop Royal 500cc 4600
-Schop Kuntsmann Torob 5500
-Schop Royal 500cc 4600
-Espresso Martini 5900
-Coors 3500
-Espresso Martini 5900
-Schop Tamango Corta C 6800
-Café Cortado Simple 2600
-Carajillo 7900`;
-const EJEMPLO_PEOPLE = "Tomás E, Kiko, Benja, Francisco K, Berni, Martín, Igor, Contesse, Joaco";
+// Almuerzos recientes guardados en este navegador (para listarlos en la portada)
+const RECENTS_KEY = "cuenta_recientes";
+const getRecents = () => { try{ return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]"); }catch(e){ return []; } };
+const addRecent = (r) => {
+  const list = getRecents().filter(x=>x.id!==r.id);
+  list.unshift(r);
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0,12)));
+};
+const removeRecent = (id) => {
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(getRecents().filter(x=>x.id!==id)));
+};
 
 function Dot({ p, size=22 }) {
   return <span className="dot" style={{ background:p.color, width:size, height:size, fontSize:size*0.43 }}>{initials(p.name)}</span>;
@@ -158,6 +161,7 @@ function CreateBill() {
   const [itemsText, setItemsText] = useState("");
   const [peopleText, setPeopleText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recents, setRecents] = useState(getRecents);
 
   const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
     const m = l.match(/^(.*?)[\s\$]+([\d.,]+)\s*$/);
@@ -176,20 +180,35 @@ function CreateBill() {
       const names = peopleText.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
       names.forEach((n,i)=>{ batch.set(bRef.collection("participants").doc(), { name:n, color:PCOLORS[i%PCOLORS.length], pos:i }); });
       await batch.commit();
+      addRecent({ id:bRef.id, name:name||"Almuerzo", createdAt:Date.now() });
       location.search = "?bill=" + bRef.id;
     }catch(e){ alert("Error: "+e.message); setBusy(false); }
   };
 
   return (
     <div className="wrap center">
-      <div className="eyebrow">Nueva cuenta</div>
-      <h1 className="h1" style={{marginBottom:14}}>Arma una cuenta</h1>
+      <div className="eyebrow">Crear</div>
+      <h1 className="h1" style={{marginBottom:14}}>Nuevo almuerzo</h1>
       <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. Los nombres son opcionales: la gente se suma desde el link.</p>
-      <button className="linkbtn" onClick={()=>{ setName("Almuerzo 11 jun"); setItemsText(EJEMPLO_ITEMS); setPeopleText(EJEMPLO_PEOPLE); }}>↳ Cargar boleta de ejemplo</button>
       <input className="field" placeholder="Nombre (ej: Almuerzo viernes)" value={name} onChange={e=>setName(e.target.value)} />
       <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\nPapas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
       <input className="field" placeholder="Participantes separados por coma (opcional)" value={peopleText} onChange={e=>setPeopleText(e.target.value)} />
       <button className="btn" disabled={busy} onClick={create}>{busy?"Creando…":"Crear y generar link"}</button>
+
+      {recents.length>0 && (
+        <div className="recents">
+          <div className="eyebrow" style={{margin:"6px 0 10px"}}>Tus almuerzos</div>
+          {recents.map(r=>(
+            <div key={r.id} className="recent">
+              <a className="recent-main" href={"?bill="+r.id}>
+                <span className="recent-name">{r.name}</span>
+                <span className="recent-date">{new Date(r.createdAt).toLocaleDateString("es-CL",{day:"numeric",month:"short"})}</span>
+              </a>
+              <button className="recent-x" title="Quitar de la lista" onClick={()=>{ removeRecent(r.id); setRecents(getRecents()); }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -233,6 +252,7 @@ function Bill({ token }) {
   const [copied, setCopied] = useState(null);
   const [shared, setShared] = useState(false);
   const [ready, setReady] = useState(false);
+  const [openItem, setOpenItem] = useState(null);
 
   useEffect(()=>{
     const ref = billRef(token);
@@ -259,11 +279,11 @@ function Bill({ token }) {
   // ↓ arreglo: soltar la identidad y volver a "¿Cuál eres tú?"
   const clearMe = () => { localStorage.removeItem("cuenta_me_"+token); setMeId(null); };
 
-  const toggle = async (itemId) => {
-    if(!me) return;
-    const ref = billRef(token).collection("claims").doc(itemId+"_"+me.id);
-    if(ownersOf(itemId).includes(me.id)) await ref.delete();
-    else await ref.set({ itemId, participantId:me.id, createdAt:ts() });
+  // marca/desmarca a cualquier persona en un ítem (gastos compartidos)
+  const setOwner = async (itemId, pid, on) => {
+    const ref = billRef(token).collection("claims").doc(itemId+"_"+pid);
+    if(on) await ref.set({ itemId, participantId:pid, createdAt:ts() });
+    else await ref.delete();
   };
 
   const totals = useMemo(()=>{
@@ -320,17 +340,40 @@ function Bill({ token }) {
         </div>
 
         {tab==="repartir" && <>
-          <div className="hint">Toca lo que consumiste. Lo que marquen los demás aparece en vivo.</div>
+          <div className="hint">Toca un ítem y marca quién lo consumió. Si fueron varios, el costo se divide entre ellos. Todo aparece en vivo.</div>
           {items.map(it=>{
             const owners = ownersOf(it.id);
             const mine = owners.includes(me.id);
+            const open = openItem===it.id;
             return (
-              <div key={it.id} className={"item"+(mine?" mine":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>toggle(it.id)}>
-                <span className="item-name">{it.name}</span>
-                <span className="item-right">
-                  {owners.length>0 && <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>}
-                  <span className="price">{fmt(it.price)}</span>
-                </span>
+              <div key={it.id} className="itemwrap">
+                <div className={"item"+(mine?" mine":"")+(open?" open":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>setOpenItem(open?null:it.id)}>
+                  <span className="item-name">{it.name}</span>
+                  <span className="item-right">
+                    {owners.length>0
+                      ? <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>
+                      : <span className="price">{fmt(it.price)}</span>}
+                    <span className="caret">{open?"▴":"▾"}</span>
+                  </span>
+                </div>
+                {open && (
+                  <div className="picker">
+                    <div className="picker-h">
+                      ¿Quién consumió esto? · {fmt(it.price)}
+                      {owners.length>1 && <span className="split-note"> → {fmt(it.price/owners.length)} c/u</span>}
+                    </div>
+                    <div className="picker-chips">
+                      {people.map(p=>{
+                        const on = owners.includes(p.id);
+                        return (
+                          <span key={p.id} className={"pchip"+(on?" on":"")} style={on?{"--mc":p.color}:undefined} onClick={()=>setOwner(it.id, p.id, !on)}>
+                            <Dot p={p} size={18}/> {p.name}{on?" ✓":""}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
