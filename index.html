@@ -111,6 +111,19 @@
     font-weight:600;font-size:14px;cursor:pointer}
   .pchip.on{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc)}
   .pchip:active{transform:scale(.97)}
+  /* foto de la boleta (OCR) */
+  .photo-btn{margin-top:0;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .ocr-err{color:var(--accent);font-size:13px;margin:-2px 0 10px;line-height:1.4}
+  .ocr-note{color:var(--inkSoft);font-size:12px;margin:-2px 0 12px;text-align:center}
+  /* agregar participantes con + */
+  .addrow{display:flex;gap:8px;margin-bottom:10px}
+  .addrow .addfield{margin-bottom:0;flex:1}
+  .addbtn{flex:0 0 auto;width:52px;border:none;border-radius:14px;background:var(--ink);
+    color:var(--paper);font-size:26px;font-weight:700;line-height:1;cursor:pointer}
+  .addbtn:active{transform:scale(.96)}
+  .people-chips{display:flex;flex-wrap:wrap;margin-bottom:6px}
+  .chip-x{border:none;background:none;color:var(--inkSoft);font-size:18px;line-height:1;
+    cursor:pointer;padding:0 0 0 2px;margin-left:2px}
 </style>
 </head>
 <body>
@@ -128,7 +141,7 @@
   window.dbf = firebase.firestore();
 </script>
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 const dbf = window.dbf;
 const ts = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -159,9 +172,14 @@ function Dot({ p, size=22 }) {
 function CreateBill() {
   const [name, setName] = useState("");
   const [itemsText, setItemsText] = useState("");
-  const [peopleText, setPeopleText] = useState("");
+  const [people, setPeople] = useState([]);     // lista de nombres (chips)
+  const [personName, setPersonName] = useState("");
   const [busy, setBusy] = useState(false);
   const [recents, setRecents] = useState(getRecents);
+  // estado de lectura de la foto (OCR)
+  const [ocr, setOcr] = useState(false);
+  const [ocrErr, setOcrErr] = useState("");
+  const fileRef = useRef(null);
 
   const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
     const m = l.match(/^(.*?)[\s\$]+([\d.,]+)\s*$/);
@@ -169,16 +187,50 @@ function CreateBill() {
     return { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1 };
   }).filter(Boolean);
 
+  // agregar / quitar participantes
+  const addPerson = () => {
+    const n = personName.trim();
+    if(!n) return;
+    if(people.some(p=>p.toLowerCase()===n.toLowerCase())){ setPersonName(""); return; }
+    setPeople([...people, n]);
+    setPersonName("");
+  };
+  const removePerson = (i) => setPeople(people.filter((_,idx)=>idx!==i));
+
+  // leer la boleta con la IA (vía función de Netlify)
+  const onPhoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // permite volver a elegir la misma foto
+    if(!file) return;
+    setOcr(true); setOcrErr("");
+    try{
+      const dataUrl = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error("No se pudo leer el archivo")); r.readAsDataURL(file); });
+      const base64 = dataUrl.split(",")[1];
+      const mediaType = file.type || "image/jpeg";
+      const resp = await fetch("/.netlify/functions/leer-boleta", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ image:base64, mediaType }),
+      });
+      let out = {};
+      try{ out = await resp.json(); }catch(_){}
+      if(!resp.ok) throw new Error(out.error || (resp.status===404 ? "La función aún no está desplegada (revisa los pasos de instalación)." : "No se pudo leer la boleta."));
+      const lines = (out.items||[]).map(it=>`${it.name} ${it.price}`).join("\n");
+      if(!lines){ setOcrErr("No se reconocieron ítems. Prueba con una foto más nítida o escríbelos a mano abajo."); return; }
+      setItemsText(prev => prev && prev.trim() ? (prev.trim()+"\n"+lines) : lines);
+    }catch(err){ setOcrErr(err.message); }
+    finally{ setOcr(false); }
+  };
+
   const create = async () => {
     const its = parseItems(itemsText);
-    if(!its.length){ alert("Pega al menos un ítem (formato: Nombre  precio)"); return; }
+    if(!its.length){ alert("Agrega al menos un ítem (formato: Nombre  precio)"); return; }
     setBusy(true);
     try{
       const bRef = await dbf.collection("bills").add({ name:name||"Cuenta", tipPct:0.10, createdAt:ts() });
       const batch = dbf.batch();
       its.forEach(it=>{ batch.set(bRef.collection("items").doc(), it); });
-      const names = peopleText.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-      names.forEach((n,i)=>{ batch.set(bRef.collection("participants").doc(), { name:n, color:PCOLORS[i%PCOLORS.length], pos:i }); });
+      people.forEach((n,i)=>{ batch.set(bRef.collection("participants").doc(), { name:n, color:PCOLORS[i%PCOLORS.length], pos:i }); });
       await batch.commit();
       addRecent({ id:bRef.id, name:name||"Almuerzo", createdAt:Date.now() });
       location.search = "?bill=" + bRef.id;
@@ -189,10 +241,36 @@ function CreateBill() {
     <div className="wrap center">
       <div className="eyebrow">Crear</div>
       <h1 className="h1" style={{marginBottom:14}}>Nuevo almuerzo</h1>
-      <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. Los nombres son opcionales: la gente se suma desde el link.</p>
+      <p className="lead">Saca una foto de la boleta y la leo por ti, o escribe los ítems a mano (uno por línea, precio al final). Revisa que queden bien antes de crear.</p>
       <input className="field" placeholder="Nombre (ej: Almuerzo viernes)" value={name} onChange={e=>setName(e.target.value)} />
+
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={onPhoto} />
+      <button type="button" className="btn alt photo-btn" disabled={ocr} onClick={()=>fileRef.current && fileRef.current.click()}>
+        {ocr ? "Leyendo boleta…" : "📷 Agregar foto de la boleta"}
+      </button>
+      {ocrErr && <p className="ocr-err">{ocrErr}</p>}
+
       <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\nPapas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
-      <input className="field" placeholder="Participantes separados por coma (opcional)" value={peopleText} onChange={e=>setPeopleText(e.target.value)} />
+
+      <div className="eyebrow" style={{margin:"6px 0 8px"}}>Participantes (opcional)</div>
+      <div className="addrow">
+        <input className="field addfield" placeholder="Nombre del participante" value={personName}
+          onChange={e=>setPersonName(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addPerson(); } }} />
+        <button type="button" className="addbtn" onClick={addPerson} aria-label="Agregar participante">+</button>
+      </div>
+      {people.length>0 && (
+        <div className="people-chips">
+          {people.map((n,i)=>(
+            <span key={i} className="chip" style={{cursor:"default"}}>
+              <Dot p={{name:n,color:PCOLORS[i%PCOLORS.length]}} size={18}/> {n}
+              <button type="button" className="chip-x" onClick={()=>removePerson(i)} aria-label={"Quitar "+n}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="ocr-note">También puedes dejarlo vacío: cada uno se suma desde el link.</p>
+
       <button className="btn" disabled={busy} onClick={create}>{busy?"Creando…":"Crear y generar link"}</button>
 
       {recents.length>0 && (
