@@ -64,7 +64,10 @@
     background:var(--card);border:1.5px solid var(--line);border-radius:13px;
     padding:12px 14px;margin-bottom:8px;cursor:pointer}
   .item.mine{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc)}
+  .item.taken{cursor:default}
+  .item.grupal{cursor:default;background:var(--panel)}
   .item:active{transform:scale(.995)}
+  .item.grupal:active,.item.taken:active{transform:none}
   .item-name{font-weight:500;font-size:15px}
   .item-right{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .owners{display:flex;gap:3px}
@@ -97,25 +100,14 @@
   .recent-date{font-family:'Space Mono',monospace;font-size:12px;color:var(--inkSoft)}
   .recent-x{border:none;background:none;color:var(--inkSoft);font-size:22px;line-height:1;
     padding:0 14px;cursor:pointer;align-self:stretch}
-  /* selector ¿quién consumió? */
+  /* ítems */
   .itemwrap{margin-bottom:8px}
-  .item.open{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
-  .caret{color:var(--inkSoft);font-size:12px}
-  .picker{background:var(--panel);border:1.5px solid var(--line);border-top:none;
-    border-radius:0 0 13px 13px;padding:12px 14px}
-  .picker-h{font-size:13px;color:var(--inkSoft);margin-bottom:10px}
-  .split-note{color:var(--green);font-weight:600}
-  .picker-chips{display:flex;flex-wrap:wrap;gap:8px}
-  .pchip{display:inline-flex;align-items:center;gap:7px;background:var(--card);
-    border:1.5px solid var(--line);border-radius:999px;padding:6px 12px 6px 6px;
-    font-weight:600;font-size:14px;cursor:pointer}
-  .pchip.on{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc)}
-  .pchip:active{transform:scale(.97)}
   /* distintivo de ítem grupal */
   .gbadge{display:inline-block;font-family:'Space Mono',monospace;font-size:10px;
     letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
     border:1px solid var(--accent);border-radius:999px;padding:1px 6px;margin-left:6px;
     vertical-align:middle}
+  .gsub{font-size:12px;color:var(--inkSoft);padding:5px 4px 0 6px}
   /* agregar participantes con + */
   .addrow{display:flex;gap:8px;margin-bottom:10px}
   .addrow .addfield{margin-bottom:0;flex:1}
@@ -153,6 +145,7 @@ const PCOLORS = ["#E0533A","#2E9E6B","#3B7DD8","#C98A1E","#8B5CF6","#D6457E","#1
 const fmt = (n) => "$" + Math.round(n).toLocaleString("es-CL");
 const initials = (name) => name.trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const param = (k) => new URLSearchParams(location.search).get(k);
+const norm = (s) => (s||"").trim().toLowerCase();
 
 // Almuerzos recientes guardados en este navegador (para listarlos en la portada)
 const RECENTS_KEY = "cuenta_recientes";
@@ -179,12 +172,25 @@ function CreateBill() {
   const [busy, setBusy] = useState(false);
   const [recents, setRecents] = useState(getRecents);
 
+  // Formato por línea:
+  //   "Nombre precio"                      -> personal (se reclama tocándolo en el link)
+  //   "* Nombre precio"                    -> grupal: se reparte entre TODOS
+  //   "* Nombre precio | Berni, Benja"     -> grupal: se reparte solo entre esos nombres
   const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
-    let grupal = false;
+    let grupal = false, splitNames = null;
     if(l.startsWith("*")){ grupal = true; l = l.slice(1).trim(); }
+    if(grupal){
+      const pipe = l.indexOf("|");
+      if(pipe !== -1){
+        splitNames = l.slice(pipe+1).split(",").map(s=>s.trim()).filter(Boolean);
+        l = l.slice(0,pipe).trim();
+      }
+    }
     const m = l.match(/^(.*?)[\s\$]+([\d.,]+)\s*$/);
     if(!m) return null;
-    return { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1, grupal };
+    const it = { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1, grupal };
+    if(splitNames && splitNames.length) it.splitNames = splitNames;
+    return it;
   }).filter(Boolean);
 
   // agregar / quitar participantes
@@ -216,9 +222,9 @@ function CreateBill() {
     <div className="wrap center">
       <div className="eyebrow">Crear</div>
       <h1 className="h1" style={{marginBottom:14}}>Nuevo almuerzo</h1>
-      <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. Pon un <b>*</b> al inicio de los ítems grupales (los que se reparten entre varios). Si me mandas la foto por el chat, te los devuelvo listos para pegar.</p>
+      <p className="lead">Pega los ítems, uno por línea, con el precio al final. Los grupales (se reparten entre todos) van con <b>*</b> adelante; si solo algunos lo consumieron, va <b>* Nombre precio | Nombre1, Nombre2</b>. Si me mandas la foto por el chat, te lo dejo listo para pegar.</p>
       <input className="field" placeholder="Nombre (ej: Almuerzo viernes)" value={name} onChange={e=>setName(e.target.value)} />
-      <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\n* Papas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
+      <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Lomo a lo pobre 9500\n* Tabla para picar 12000\n* Papas fritas 5000 | Berni, Benja"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
 
       <div className="eyebrow" style={{margin:"6px 0 8px"}}>Participantes (opcional)</div>
       <div className="addrow">
@@ -237,7 +243,7 @@ function CreateBill() {
           ))}
         </div>
       )}
-      <p className="subnote">También puedes dejarlo vacío: cada uno se suma desde el link.</p>
+      <p className="subnote">Para los grupales "entre algunos", conviene tener a esas personas en la lista (los nombres deben coincidir).</p>
 
       <button className="btn" disabled={busy} onClick={create}>{busy?"Creando…":"Crear y generar link"}</button>
 
@@ -292,13 +298,12 @@ function Bill({ token }) {
   const [bill, setBill] = useState(null);
   const [items, setItems] = useState([]);
   const [people, setPeople] = useState([]);
-  const [claims, setClaims] = useState([]); // {itemId, participantId}
+  const [claims, setClaims] = useState([]); // {itemId, participantId} (solo ítems personales)
   const [meId, setMeId] = useState(localStorage.getItem("cuenta_me_"+token) || null);
   const [tab, setTab] = useState("repartir");
   const [copied, setCopied] = useState(null);
   const [shared, setShared] = useState(false);
   const [ready, setReady] = useState(false);
-  const [openItem, setOpenItem] = useState(null);
 
   useEffect(()=>{
     const ref = billRef(token);
@@ -316,36 +321,47 @@ function Bill({ token }) {
 
   const peopleById = useMemo(()=>Object.fromEntries(people.map(p=>[p.id,p])),[people]);
   const me = meId ? peopleById[meId] : null;
-  const ownersOf = (itemId) => claims.filter(c=>c.itemId===itemId).map(c=>c.participantId);
+  const claimsOf = (itemId) => claims.filter(c=>c.itemId===itemId).map(c=>c.participantId);
+
+  // resuelve nombres -> ids de participantes (para grupales entre algunos)
+  const idsForNames = (names) => {
+    const want = names.map(norm);
+    return people.filter(p=> want.includes(norm(p.name))).map(p=>p.id);
+  };
+  // a quién se reparte un ítem
+  const ownersOf = (it) => {
+    if(it.grupal){
+      const ids = (it.splitNames && it.splitNames.length) ? idsForNames(it.splitNames) : people.map(p=>p.id);
+      return ids.length ? ids : people.map(p=>p.id); // si no calzan nombres, entre todos
+    }
+    return claimsOf(it.id);
+  };
 
   // si el participante guardado ya no existe, re-identificar
   useEffect(()=>{ if(ready && meId && people.length && !peopleById[meId]){ localStorage.removeItem("cuenta_me_"+token); setMeId(null);} },[ready,people]);
 
   const pickMe = (id) => { localStorage.setItem("cuenta_me_"+token, id); setMeId(id); };
-  // ↓ arreglo: soltar la identidad y volver a "¿Cuál eres tú?"
   const clearMe = () => { localStorage.removeItem("cuenta_me_"+token); setMeId(null); };
 
-  // marca/desmarca a cualquier persona en un ítem (gastos compartidos)
   const setOwner = async (itemId, pid, on) => {
     const ref = billRef(token).collection("claims").doc(itemId+"_"+pid);
     if(on) await ref.set({ itemId, participantId:pid, createdAt:ts() });
     else await ref.delete();
   };
 
-  // ítem personal: un solo dueño. Toca para asignártelo; vuelve a tocar para soltarlo.
-  // Si lo tenía otra persona, se reasigna a ti (un ítem personal tiene un único consumidor).
+  // ítem personal: un solo dueño y queda bloqueado.
+  // libre -> me lo asigno | mío -> lo suelto | de otra persona -> no hago nada
   const claimSolo = async (itemId) => {
-    const owners = ownersOf(itemId);
-    const mine = owners.includes(me.id);
-    await Promise.all(owners.map(pid => setOwner(itemId, pid, false)));
-    if(!mine) await setOwner(itemId, me.id, true);
+    const owners = claimsOf(itemId);
+    if(!owners.length){ await setOwner(itemId, me.id, true); return; }
+    if(owners.includes(me.id)){ await setOwner(itemId, me.id, false); return; }
   };
 
   const totals = useMemo(()=>{
     const per = {}; people.forEach(p=>per[p.id]={items:[],sub:0});
     let unassigned = 0;
     items.forEach(it=>{
-      const owners = ownersOf(it.id);
+      const owners = ownersOf(it);
       if(!owners.length){ unassigned += Number(it.price); return; }
       const share = Number(it.price)/owners.length;
       owners.forEach(oid=>{ if(per[oid]){ per[oid].items.push({name:it.name,share,split:owners.length}); per[oid].sub+=share; }});
@@ -355,7 +371,7 @@ function Bill({ token }) {
 
   const billSub = items.reduce((s,i)=>s+Number(i.price),0);
   const tip = bill ? Number(bill.tipPct ?? 0.10) : 0.10;
-  const assignedCount = items.filter(i=>ownersOf(i.id).length).length;
+  const assignedCount = items.filter(it=> ownersOf(it).length>0).length;
   const progress = items.length ? Math.round(assignedCount/items.length*100) : 0;
 
   const shareLink = () => {
@@ -395,58 +411,39 @@ function Bill({ token }) {
         </div>
 
         {tab==="repartir" && <>
-          <div className="hint">Toca lo que consumiste para sumarlo a tu cuenta. Los ítems marcados como <b>grupal</b> abren el selector para repartir entre varios. Todo en vivo.</div>
+          <div className="hint">Toca lo que consumiste para sumarlo a tu cuenta; queda bloqueado para que nadie te lo borre. Los ítems grupales ya vienen repartidos. Todo en vivo.</div>
           {items.map(it=>{
-            const owners = ownersOf(it.id);
-            const mine = owners.includes(me.id);
-
-            // ítem personal: un toque te lo asigna (un solo dueño), sin selector
-            if(!it.grupal){
+            // ---- ítem grupal: repartido automáticamente, sin tocar ----
+            if(it.grupal){
+              const ids = ownersOf(it);
+              const label = (it.splitNames && it.splitNames.length) ? it.splitNames.join(", ") : "Entre todos";
               return (
                 <div key={it.id} className="itemwrap">
-                  <div className={"item"+(mine?" mine":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>claimSolo(it.id)}>
-                    <span className="item-name">{it.name}</span>
+                  <div className="item grupal">
+                    <span className="item-name">{it.name}<span className="gbadge">grupal</span></span>
                     <span className="item-right">
-                      {owners.length>0
-                        ? <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>
-                        : <span className="price">{fmt(it.price)}</span>}
+                      {ids.length>0 && <span className="owners">{ids.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>}
+                      <span className="price">{ids.length ? fmt(it.price/ids.length)+" c/u" : fmt(it.price)}</span>
                     </span>
                   </div>
+                  <div className="gsub">{label}{ids.length>1 ? " · "+fmt(it.price)+" en total" : ""}</div>
                 </div>
               );
             }
-
-            // ítem grupal: selector de varios consumidores
-            const open = openItem===it.id;
+            // ---- ítem personal: tocar para tomar / soltar; bloqueado para el resto ----
+            const owners = claimsOf(it.id);
+            const mine = owners.includes(me.id);
+            const taken = owners.length>0 && !mine;
             return (
               <div key={it.id} className="itemwrap">
-                <div className={"item"+(mine?" mine":"")+(open?" open":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>setOpenItem(open?null:it.id)}>
-                  <span className="item-name">{it.name}<span className="gbadge">grupal</span></span>
+                <div className={"item"+(mine?" mine":"")+(taken?" taken":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>claimSolo(it.id)}>
+                  <span className="item-name">{it.name}</span>
                   <span className="item-right">
                     {owners.length>0
                       ? <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>
                       : <span className="price">{fmt(it.price)}</span>}
-                    <span className="caret">{open?"▴":"▾"}</span>
                   </span>
                 </div>
-                {open && (
-                  <div className="picker">
-                    <div className="picker-h">
-                      ¿Quién consumió esto? · {fmt(it.price)}
-                      {owners.length>1 && <span className="split-note"> → {fmt(it.price/owners.length)} c/u</span>}
-                    </div>
-                    <div className="picker-chips">
-                      {people.map(p=>{
-                        const on = owners.includes(p.id);
-                        return (
-                          <span key={p.id} className={"pchip"+(on?" on":"")} style={on?{"--mc":p.color}:undefined} onClick={()=>setOwner(it.id, p.id, !on)}>
-                            <Dot p={p} size={18}/> {p.name}{on?" ✓":""}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
