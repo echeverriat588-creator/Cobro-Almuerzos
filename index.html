@@ -111,6 +111,11 @@
     font-weight:600;font-size:14px;cursor:pointer}
   .pchip.on{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc)}
   .pchip:active{transform:scale(.97)}
+  /* distintivo de ítem grupal */
+  .gbadge{display:inline-block;font-family:'Space Mono',monospace;font-size:10px;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
+    border:1px solid var(--accent);border-radius:999px;padding:1px 6px;margin-left:6px;
+    vertical-align:middle}
   /* agregar participantes con + */
   .addrow{display:flex;gap:8px;margin-bottom:10px}
   .addrow .addfield{margin-bottom:0;flex:1}
@@ -175,9 +180,11 @@ function CreateBill() {
   const [recents, setRecents] = useState(getRecents);
 
   const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
+    let grupal = false;
+    if(l.startsWith("*")){ grupal = true; l = l.slice(1).trim(); }
     const m = l.match(/^(.*?)[\s\$]+([\d.,]+)\s*$/);
     if(!m) return null;
-    return { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1 };
+    return { name:m[1].trim(), price:parseInt(m[2].replace(/[.,]/g,""),10), position:i+1, grupal };
   }).filter(Boolean);
 
   // agregar / quitar participantes
@@ -209,9 +216,9 @@ function CreateBill() {
     <div className="wrap center">
       <div className="eyebrow">Crear</div>
       <h1 className="h1" style={{marginBottom:14}}>Nuevo almuerzo</h1>
-      <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. (Si me mandas la foto por el chat, te los devuelvo listos para pegar.)</p>
+      <p className="lead">Pega los ítems de la boleta, uno por línea, con el precio al final. Pon un <b>*</b> al inicio de los ítems grupales (los que se reparten entre varios). Si me mandas la foto por el chat, te los devuelvo listos para pegar.</p>
       <input className="field" placeholder="Nombre (ej: Almuerzo viernes)" value={name} onChange={e=>setName(e.target.value)} />
-      <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\nPapas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
+      <textarea className="field" style={{minHeight:140,resize:"vertical"}} placeholder={"Schop Royal 4600\nFrankie S 9900\n* Papas Fritas 5900"} value={itemsText} onChange={e=>setItemsText(e.target.value)} />
 
       <div className="eyebrow" style={{margin:"6px 0 8px"}}>Participantes (opcional)</div>
       <div className="addrow">
@@ -325,6 +332,15 @@ function Bill({ token }) {
     else await ref.delete();
   };
 
+  // ítem personal: un solo dueño. Toca para asignártelo; vuelve a tocar para soltarlo.
+  // Si lo tenía otra persona, se reasigna a ti (un ítem personal tiene un único consumidor).
+  const claimSolo = async (itemId) => {
+    const owners = ownersOf(itemId);
+    const mine = owners.includes(me.id);
+    await Promise.all(owners.map(pid => setOwner(itemId, pid, false)));
+    if(!mine) await setOwner(itemId, me.id, true);
+  };
+
   const totals = useMemo(()=>{
     const per = {}; people.forEach(p=>per[p.id]={items:[],sub:0});
     let unassigned = 0;
@@ -379,15 +395,33 @@ function Bill({ token }) {
         </div>
 
         {tab==="repartir" && <>
-          <div className="hint">Toca un ítem y marca quién lo consumió. Si fueron varios, el costo se divide entre ellos. Todo aparece en vivo.</div>
+          <div className="hint">Toca lo que consumiste para sumarlo a tu cuenta. Los ítems marcados como <b>grupal</b> abren el selector para repartir entre varios. Todo en vivo.</div>
           {items.map(it=>{
             const owners = ownersOf(it.id);
             const mine = owners.includes(me.id);
+
+            // ítem personal: un toque te lo asigna (un solo dueño), sin selector
+            if(!it.grupal){
+              return (
+                <div key={it.id} className="itemwrap">
+                  <div className={"item"+(mine?" mine":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>claimSolo(it.id)}>
+                    <span className="item-name">{it.name}</span>
+                    <span className="item-right">
+                      {owners.length>0
+                        ? <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>
+                        : <span className="price">{fmt(it.price)}</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // ítem grupal: selector de varios consumidores
             const open = openItem===it.id;
             return (
               <div key={it.id} className="itemwrap">
                 <div className={"item"+(mine?" mine":"")+(open?" open":"")} style={mine?{"--mc":me.color}:undefined} onClick={()=>setOpenItem(open?null:it.id)}>
-                  <span className="item-name">{it.name}</span>
+                  <span className="item-name">{it.name}<span className="gbadge">grupal</span></span>
                   <span className="item-right">
                     {owners.length>0
                       ? <span className="owners">{owners.map(oid=>{ const o=peopleById[oid]; return o?<Dot key={oid} p={o} size={18}/>:null; })}</span>
