@@ -470,8 +470,8 @@ function Bill({ token }) {
 
   if(!ready) return <div className="wrap center"><p className="lead">Cargando…</p></div>;
   if(bill===false) return <div className="wrap center"><h1 className="h1">Link no encontrado</h1><p className="lead">Revisa que el link esté completo.</p></div>;
-  if(!entered) return <Landing bill={bill} people={people} total={billSub} onEnter={()=>setEntered(true)} onShare={shareLink} shared={shared} />;
-  if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} payName={bill.payName} total={billSub} onPick={pickMe} />;
+  if(!entered) return <Landing bill={bill} people={people} total={billSub*(1+tip)} onEnter={()=>setEntered(true)} onShare={shareLink} shared={shared} />;
+  if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} payName={bill.payName} total={billSub*(1+tip)} onPick={pickMe} />;
 
   return (
     <div>
@@ -554,9 +554,10 @@ function Bill({ token }) {
             );
           })}
           <div className="recon">
-            <div className="l"><span>Repartido</span><span>{fmt(billSub-totals.unassigned)}</span></div>
-            <div className="l"><span>Sin marcar</span><span>{fmt(totals.unassigned)}</span></div>
-            <div className="l k"><span>Boleta</span><span>{fmt(billSub)}</span></div>
+            <div className="l"><span>Subtotal</span><span>{fmt(billSub)}</span></div>
+            {totals.unassigned>0 && <div className="l"><span>Sin marcar</span><span>{fmt(totals.unassigned)}</span></div>}
+            <div className="l"><span>+ {Math.round(tip*100)}% propina</span><span>{fmt(billSub*tip)}</span></div>
+            <div className="l k"><span>Total boleta</span><span>{fmt(billSub*(1+tip))}</span></div>
           </div>
         </>}
       </div>
