@@ -148,8 +148,15 @@
     messagingSenderId: "217453502164",
     appId: "1:217453502164:web:64f984390df6b54c61e541"
   };
-  firebase.initializeApp(firebaseConfig);
-  window.dbf = firebase.firestore();
+  try {
+    firebase.initializeApp(firebaseConfig);
+    window.dbf = firebase.firestore();
+    // Fuerza long-polling: arregla el "Cargando…" eterno en navegadores in-app
+    // (WhatsApp / Instagram) y redes que bloquean el streaming (WebChannel) de Firestore.
+    window.dbf.settings({ experimentalForceLongPolling: true });
+  } catch (e) {
+    console.error("Firebase no se pudo inicializar:", e);
+  }
 </script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo } = React;
@@ -367,24 +374,35 @@ function Bill({ token }) {
   const [ready, setReady] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [payCopied, setPayCopied] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   useEffect(()=>{
+    let done = false;
+    const finish = ()=>{ done = true; clearTimeout(timer); };
+    const timer = setTimeout(()=>{ if(!done){ setTimedOut(true); setReady(true); } }, 9000);
+
+    if(!dbf){ clearTimeout(timer); setTimedOut(true); setReady(true); return; }
+
     const ref = billRef(token);
     const unsubs = [];
     let started = false;
-    unsubs.push(ref.onSnapshot(snap=>{
-      if(!snap.exists){ setBill(false); setReady(true); return; }
-      setBill({ id:snap.id, ...snap.data() });
-      setReady(true);
-      if(!started){
-        started = true;
-        unsubs.push(ref.collection("items").orderBy("position").onSnapshot(s=> setItems(s.docs.map(d=>({id:d.id,...d.data()})))));
-        unsubs.push(ref.collection("participants").orderBy("pos").onSnapshot(s=> setPeople(s.docs.map(d=>({id:d.id,...d.data()})))));
-        unsubs.push(ref.collection("claims").onSnapshot(s=> setClaims(s.docs.map(d=>d.data()))));
-        unsubs.push(ref.collection("payments").onSnapshot(s=> setPayments(s.docs.map(d=>d.data()))));
-      }
-    }, e=>{ console.error(e); setBill(false); setReady(true); }));
-    return ()=> unsubs.forEach(u=>u());
+    try{
+      unsubs.push(ref.onSnapshot(snap=>{
+        finish();
+        if(!snap.exists){ setBill(false); setReady(true); return; }
+        setBill({ id:snap.id, ...snap.data() });
+        setReady(true);
+        if(!started){
+          started = true;
+          unsubs.push(ref.collection("items").orderBy("position").onSnapshot(s=> setItems(s.docs.map(d=>({id:d.id,...d.data()})))));
+          unsubs.push(ref.collection("participants").orderBy("pos").onSnapshot(s=> setPeople(s.docs.map(d=>({id:d.id,...d.data()})))));
+          unsubs.push(ref.collection("claims").onSnapshot(s=> setClaims(s.docs.map(d=>d.data()))));
+          unsubs.push(ref.collection("payments").onSnapshot(s=> setPayments(s.docs.map(d=>d.data()))));
+        }
+      }, e=>{ console.error(e); finish(); setBill(false); setReady(true); }));
+    }catch(e){ console.error(e); finish(); setTimedOut(true); setReady(true); }
+
+    return ()=>{ clearTimeout(timer); unsubs.forEach(u=>u()); };
   }, [token]);
 
   const peopleById = useMemo(()=>Object.fromEntries(people.map(p=>[p.id,p])),[people]);
@@ -469,6 +487,7 @@ function Bill({ token }) {
   };
 
   if(!ready) return <div className="wrap center"><p className="lead">Cargando…</p></div>;
+  if(timedOut && !bill) return <div className="wrap center"><h1 className="h1">No pudimos cargar</h1><p className="lead">Puede ser la conexión o el navegador. Reintenta — y si abriste el link dentro de WhatsApp o Instagram, ábrelo mejor en Chrome o Safari.</p><button className="btn" onClick={()=>location.reload()}>Reintentar</button></div>;
   if(bill===false) return <div className="wrap center"><h1 className="h1">Link no encontrado</h1><p className="lead">Revisa que el link esté completo.</p></div>;
   if(!entered) return <Landing bill={bill} people={people} total={billSub*(1+tip)} onEnter={()=>setEntered(true)} onShare={shareLink} shared={shared} />;
   if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} payName={bill.payName} total={billSub*(1+tip)} onPick={pickMe} />;
