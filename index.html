@@ -6,9 +6,10 @@
 <title>La cuenta</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Librerías desde jsDelivr (más confiable que unpkg) con versiones fijas -->
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
 <!-- Firebase (compat). Si no carga, sube el número de versión en estas dos líneas (ej: 11.0.2). -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -91,7 +92,6 @@
   .prog{height:7px;border-radius:99px;background:var(--panel);overflow:hidden}
   .prog>div{height:100%;background:var(--green);transition:width .3s}
   .fmeta{font-size:13px;color:var(--inkSoft);text-align:center}
-  /* lista de almuerzos recientes */
   .recents{margin-top:26px;border-top:1.5px dashed var(--line);padding-top:18px}
   .recent{display:flex;align-items:center;gap:8px;background:var(--card);
     border:1.5px solid var(--line);border-radius:13px;margin-bottom:8px;overflow:hidden}
@@ -101,14 +101,12 @@
   .recent-date{font-family:'Space Mono',monospace;font-size:12px;color:var(--inkSoft)}
   .recent-x{border:none;background:none;color:var(--inkSoft);font-size:22px;line-height:1;
     padding:0 14px;cursor:pointer;align-self:stretch}
-  /* ítems */
   .itemwrap{margin-bottom:8px}
   .gbadge{display:inline-block;font-family:'Space Mono',monospace;font-size:10px;
     letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
     border:1px solid var(--accent);border-radius:999px;padding:1px 6px;margin-left:6px;
     vertical-align:middle}
   .gsub{font-size:12px;color:var(--inkSoft);padding:5px 4px 0 6px}
-  /* agregar participantes con + */
   .addrow{display:flex;gap:8px;margin-bottom:10px}
   .addrow .addfield{margin-bottom:0;flex:1}
   .addbtn{flex:0 0 auto;width:52px;border:none;border-radius:14px;background:var(--ink);
@@ -118,7 +116,6 @@
   .chip-x{border:none;background:none;color:var(--inkSoft);font-size:18px;line-height:1;
     cursor:pointer;padding:0 0 0 2px;margin-left:2px}
   .subnote{color:var(--inkSoft);font-size:12px;margin:-2px 0 12px}
-  /* hoja "ir a pagar" */
   .sheet-bg{position:fixed;inset:0;background:rgba(33,28,20,.45);display:flex;
     align-items:flex-end;justify-content:center;z-index:50}
   .sheet{background:var(--card);width:100%;max-width:560px;border-radius:20px 20px 0 0;
@@ -135,6 +132,9 @@
     white-space:pre-wrap;color:var(--ink);margin-bottom:12px}
   .paidtag{font-family:'Space Mono',monospace;font-size:11px;color:var(--green);
     margin-left:8px;font-weight:700}
+  .loaderr{padding:30px 24px;max-width:560px;margin:0 auto;font-family:Inter,system-ui,sans-serif}
+  .loaderr h2{font-family:'Bricolage Grotesque',sans-serif;font-size:24px;margin:0 0 8px}
+  .loaderr p{color:var(--inkSoft);line-height:1.5}
 </style>
 </head>
 <body>
@@ -151,8 +151,6 @@
   try {
     firebase.initializeApp(firebaseConfig);
     window.dbf = firebase.firestore();
-    // Fuerza long-polling: arregla el "Cargando…" eterno en navegadores in-app
-    // (WhatsApp / Instagram) y redes que bloquean el streaming (WebChannel) de Firestore.
     window.dbf.settings({ experimentalForceLongPolling: true });
   } catch (e) {
     console.error("Firebase no se pudo inicializar:", e);
@@ -186,7 +184,6 @@ function Dot({ p, size=22 }) {
   return <span className="dot" style={{ background:p.color, width:size, height:size, fontSize:size*0.43 }}>{initials(p.name)}</span>;
 }
 
-// editor para agregar datos de transferencia cuando faltan
 function PayEditor({ initialName, onSave }) {
   const [nm, setNm] = useState(initialName||"");
   const [info, setInfo] = useState("");
@@ -201,7 +198,6 @@ function PayEditor({ initialName, onSave }) {
   );
 }
 
-// ---------- Crear cuenta nueva ----------
 function CreateBill() {
   const [name, setName] = useState("");
   const [itemsText, setItemsText] = useState("");
@@ -212,7 +208,6 @@ function CreateBill() {
   const [busy, setBusy] = useState(false);
   const [recents, setRecents] = useState(getRecents);
 
-  // "Nombre precio" -> personal | "* Nombre precio" -> entre todos | "* Nombre precio | Berni, Benja" -> entre algunos
   const parseItems = (t) => t.split("\n").map(l=>l.trim()).filter(Boolean).map((l,i)=>{
     let grupal = false, splitNames = null;
     if(l.startsWith("*")){ grupal = true; l = l.slice(1).trim(); }
@@ -306,7 +301,6 @@ function CreateBill() {
   );
 }
 
-// ---------- ¿Quién eres? ----------
 function Identify({ people, billId, billName, payName, total, onPick }) {
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -335,7 +329,6 @@ function Identify({ people, billId, billName, payName, total, onPick }) {
   );
 }
 
-// ---------- Portada del almuerzo (todos aterrizan aquí) ----------
 function Landing({ bill, people, total, onEnter, onShare, shared }) {
   const ctx = [];
   if(people.length>0) ctx.push("mesa de "+people.length);
@@ -359,7 +352,6 @@ function Landing({ bill, people, total, onEnter, onShare, shared }) {
   );
 }
 
-// ---------- Pantalla principal de la cuenta ----------
 function Bill({ token }) {
   const [bill, setBill] = useState(null);
   const [items, setItems] = useState([]);
@@ -431,7 +423,6 @@ function Bill({ token }) {
     if(on) await ref.set({ itemId, participantId:pid, createdAt:ts() });
     else await ref.delete();
   };
-  // personal: libre -> me lo asigno | mío -> lo suelto | de otro -> nada (bloqueado)
   const claimSolo = async (itemId) => {
     const owners = claimsOf(itemId);
     if(!owners.length){ await setOwner(itemId, me.id, true); return; }
@@ -629,6 +620,23 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+  // Respaldo: si en 5s la app no pintó nada, mostramos qué librería faltó en vez de quedar en blanco.
+  setTimeout(function(){
+    var r = document.getElementById('root');
+    if (r && r.childElementCount === 0) {
+      var faltan = [];
+      if (typeof React === 'undefined') faltan.push('React');
+      if (typeof ReactDOM === 'undefined') faltan.push('ReactDOM');
+      if (typeof Babel === 'undefined') faltan.push('Babel');
+      if (typeof firebase === 'undefined') faltan.push('Firebase');
+      r.innerHTML = '<div class="loaderr"><h2>No se cargó la app</h2>'
+        + '<p>No alcanzó a bajar: <b>' + (faltan.join(', ') || 'una librería') + '</b>. '
+        + 'Casi siempre es la conexión. Recarga la página; si sigue, prueba con otra red, datos móviles, o ábrela en Chrome/Safari (no dentro de WhatsApp/Instagram).</p>'
+        + '<button class="btn" style="max-width:200px" onclick="location.reload()">Recargar</button></div>';
+    }
+  }, 5000);
 </script>
 </body>
 </html>
