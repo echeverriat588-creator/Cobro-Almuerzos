@@ -205,6 +205,7 @@ function CreateBill() {
   const [personName, setPersonName] = useState("");
   const [payName, setPayName] = useState("");
   const [payInfo, setPayInfo] = useState("");
+  const [discount, setDiscount] = useState("");
   const [busy, setBusy] = useState(false);
   const [recents, setRecents] = useState(getRecents);
 
@@ -239,7 +240,8 @@ function CreateBill() {
     if(!its.length){ alert("Agrega al menos un ítem (formato: Nombre  precio)"); return; }
     setBusy(true);
     try{
-      const bRef = await dbf.collection("bills").add({ name:name||"Cuenta", tipPct:0.10, payName:payName.trim(), payInfo:payInfo.trim(), createdAt:ts() });
+      const discVal = parseInt((discount||"").replace(/[^\d]/g,""),10) || 0;
+      const bRef = await dbf.collection("bills").add({ name:name||"Cuenta", tipPct:0.10, discount:discVal, payName:payName.trim(), payInfo:payInfo.trim(), createdAt:ts() });
       const batch = dbf.batch();
       its.forEach(it=>{ batch.set(bRef.collection("items").doc(), it); });
       people.forEach((n,i)=>{ batch.set(bRef.collection("participants").doc(), { name:n, color:PCOLORS[i%PCOLORS.length], pos:i }); });
@@ -275,6 +277,10 @@ function CreateBill() {
         </div>
       )}
       <p className="subnote">Para los grupales "entre algunos", esas personas deben estar en la lista (los nombres deben coincidir).</p>
+
+      <div className="eyebrow" style={{margin:"6px 0 8px"}}>Descuento / gift card (opcional)</div>
+      <input className="field" inputMode="numeric" placeholder="Monto total (ej: 40000)" value={discount} onChange={e=>setDiscount(e.target.value)} />
+      <p className="subnote">Se reparte en partes iguales entre todos los participantes y se le resta a cada uno después de la propina, igual que la boleta.</p>
 
       <div className="eyebrow" style={{margin:"6px 0 8px"}}>¿Quién pagó? (opcional)</div>
       <input className="field" placeholder="Nombre de quien pagó la boleta" value={payName} onChange={e=>setPayName(e.target.value)} />
@@ -453,11 +459,14 @@ function Bill({ token }) {
 
   const billSub = items.reduce((s,i)=>s+Number(i.price),0);
   const tip = bill ? Number(bill.tipPct ?? 0.10) : 0.10;
+  const disc = bill ? Number(bill.discount||0) : 0;
+  const discPer = (disc>0 && people.length) ? disc/people.length : 0;
+  const finalOf = (sub) => sub>0 ? (sub*(1+tip) - discPer) : 0;
   const assignedCount = items.filter(it=> ownersOf(it).length>0).length;
   const progress = items.length ? Math.round(assignedCount/items.length*100) : 0;
 
   const myT = (me && totals.per[me.id]) ? totals.per[me.id] : { items:[], sub:0 };
-  const myTotal = myT.sub*(1+tip);
+  const myTotal = finalOf(myT.sub);
   const myPaid = me ? paidIds.has(me.id) : false;
   const isPayer = !!(me && bill && bill.payName && norm(me.name)===norm(bill.payName));
 
@@ -467,7 +476,7 @@ function Bill({ token }) {
     setShared(true); setTimeout(()=>setShared(false),1600);
   };
   const copyCharge = (p) => {
-    const tot = totals.per[p.id].sub*(1+tip);
+    const tot = finalOf(totals.per[p.id].sub);
     try{ navigator.clipboard.writeText(`${p.name}, te tocó ${fmt(tot)} de la cuenta (incluye ${Math.round(tip*100)}% de propina). Te paso los datos para la transferencia 🙌`); }catch(e){}
     setCopied(p.id); setTimeout(()=>setCopied(null),1600);
   };
@@ -480,8 +489,8 @@ function Bill({ token }) {
   if(!ready) return <div className="wrap center"><p className="lead">Cargando…</p></div>;
   if(timedOut && !bill) return <div className="wrap center"><h1 className="h1">No pudimos cargar</h1><p className="lead">Puede ser la conexión o el navegador. Reintenta — y si abriste el link dentro de WhatsApp o Instagram, ábrelo mejor en Chrome o Safari.</p><button className="btn" onClick={()=>location.reload()}>Reintentar</button></div>;
   if(bill===false) return <div className="wrap center"><h1 className="h1">Link no encontrado</h1><p className="lead">Revisa que el link esté completo.</p></div>;
-  if(!entered) return <Landing bill={bill} people={people} total={billSub*(1+tip)} onEnter={()=>setEntered(true)} onShare={shareLink} shared={shared} />;
-  if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} payName={bill.payName} total={billSub*(1+tip)} onPick={pickMe} />;
+  if(!entered) return <Landing bill={bill} people={people} total={billSub*(1+tip)-disc} onEnter={()=>setEntered(true)} onShare={shareLink} shared={shared} />;
+  if(!me) return <Identify people={people} billId={bill.id} billName={bill.name} payName={bill.payName} total={billSub*(1+tip)-disc} onPick={pickMe} />;
 
   return (
     <div>
@@ -544,7 +553,7 @@ function Bill({ token }) {
         {tab==="resumen" && <>
           {people.map(p=>{
             const t = totals.per[p.id]; if(!t) return null;
-            const tot = t.sub*(1+tip);
+            const tot = finalOf(t.sub);
             return (
               <div key={p.id} className="prow">
                 <div className="phead">
@@ -558,6 +567,7 @@ function Bill({ token }) {
                   </div>
                 ))}
                 {t.sub>0 && <div className="pitem"><span className="sp">+ {Math.round(tip*100)}% propina</span><span>{fmt(t.sub*tip)}</span></div>}
+                {t.sub>0 && discPer>0 && <div className="pitem"><span className="sp">− Gift card · ÷{people.length}</span><span>−{fmt(discPer)}</span></div>}
                 {isPayer && t.sub>0 && <button className={"ghost"+(copied===p.id?" done":"")} style={{marginTop:8}} onClick={()=>copyCharge(p)}>{copied===p.id?"Copiado ✓":"Copiar cobro"}</button>}
                 <div className="tear" />
               </div>
@@ -567,7 +577,8 @@ function Bill({ token }) {
             <div className="l"><span>Subtotal</span><span>{fmt(billSub)}</span></div>
             {totals.unassigned>0 && <div className="l"><span>Sin marcar</span><span>{fmt(totals.unassigned)}</span></div>}
             <div className="l"><span>+ {Math.round(tip*100)}% propina</span><span>{fmt(billSub*tip)}</span></div>
-            <div className="l k"><span>Total boleta</span><span>{fmt(billSub*(1+tip))}</span></div>
+            {disc>0 && <div className="l"><span>− Gift card</span><span>−{fmt(disc)}</span></div>}
+            <div className="l k"><span>Total boleta</span><span>{fmt(billSub*(1+tip)-disc)}</span></div>
           </div>
         </>}
       </div>
@@ -592,6 +603,7 @@ function Bill({ token }) {
                   </div>
                 ))}
                 <div className="pitem"><span className="sp">+ {Math.round(tip*100)}% propina</span><span>{fmt(myT.sub*tip)}</span></div>
+                {discPer>0 && <div className="pitem"><span className="sp">− Gift card · ÷{people.length}</span><span>−{fmt(discPer)}</span></div>}
               </div>
             )}
             {myT.items.length===0 && <p className="lead" style={{marginTop:0}}>Todavía no marcaste lo que consumiste. Vuelve a "Lo mío" y toca tus ítems.</p>}
